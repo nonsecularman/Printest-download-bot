@@ -1,0 +1,38 @@
+{
+  "name": "Pinterest Downloader Bot",
+  "description": "Telegram bot to download Pinterest images & HD videos (Aiogram)",
+  "repository": "https://github.com/nonsecularman/Printest-download-bot",
+  "logo": "https://upload.wikimedia.org/wikipedia/commons/0/08/Pinterest-logo.png",
+  "keywords": [
+    "telegram",
+    "pinterest",
+    "downloader",
+    "aiogram",
+    "bot",
+    "video",
+    "image"
+  ],
+  "stack": "heroku-24",
+  "buildpacks": [
+    {
+      "url": "heroku/python"
+    }
+  ],
+  "env": {
+    "BOT_TOKEN": {
+      "description": "Telegram Bot Token from @BotFather",
+      "required": true
+    },
+    "OWNER_ID": {
+      "description": "Telegram User ID of bot owner",
+      "required": false,
+      "value": "123456789"
+    }
+  },
+  "formation": {
+    "worker": {
+      "quantity": 1,
+      "size": "basic"
+    }
+  }
+}
