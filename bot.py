@@ -57,25 +57,30 @@ async def force_sub(m: Message) -> bool:
 
     except (TelegramBadRequest, TelegramForbiddenError):
         await m.answer(
-            "🚫 <b>Bot use karne se pehle dono channel join karo</b>\n\n"
+            "🚫 <b>Before using me, join both channels</b>\n\n"
             f"👉 {FORCE_CHANNEL_1}\n"
             f"👉 {FORCE_CHANNEL_2}\n\n"
-            "✅ Join ke baad /start bhejo"
+            "✅ Joined? Send /start again"
         )
         return False
 
 
+# 🧠 START — PSYCHOLOGIST MODE
 @dp.message(CommandStart())
 async def start(m: Message):
     if not await force_sub(m):
         return
 
     await m.answer(
-        "📌 <b>Pinterest Downloader Bot</b>\n\n"
-        "🔹 Pinterest link bhejo\n"
-        "🔹 Images / Videos download honge\n\n"
-        "⚠️ Daily limit: <b>4 downloads</b>\n"
-        "👑 Owner: Unlimited"
+        "👋 ʜᴇʏ… ʙʀᴇᴀᴛʜᴇ.\n\n"
+        "ɪ ᴅᴏɴ’ᴛ ᴊᴜᴅɢᴇ.\n"
+        "ɪ ᴊᴜsᴛ ᴏʙsᴇʀᴠᴇ ʏᴏᴜʀ ᴘɪɴᴛᴇʀᴇsᴛ ᴛᴀsᴛᴇ 👀\n\n"
+        "🎥 ɴᴏᴡ ᴀᴄᴛɪᴠᴇ: ᴘғᴘ ᴍᴏᴅᴇ\n"
+        "🧪 ᴏᴛʜᴇʀ ᴍᴏᴅᴇs: ᴄᴏᴍɪɴɢ sᴏᴏɴ… ʜᴇᴀʟɪɴɢ ɪɴ ᴘʀᴏɢʀᴇss 💭\n\n"
+        "📌 ᴅʀᴏᴘ ᴀ ᴘɪɴᴛᴇʀᴇsᴛ ʟɪɴᴋ\n"
+        "ɪ’ʟʟ ᴛᴀᴋᴇ ᴄᴀʀᴇ ᴏғ ᴛʜᴇ ʀᴇsᴛ 🫶\n\n"
+        "⚠️ ᴅᴀɪʟʏ ʟɪᴍɪᴛ: 4 ᴅᴏᴡɴʟᴏᴀᴅs\n"
+        "👑 ᴏᴡɴᴇʀs: ᴜɴʟɪᴍɪᴛᴇᴅ""
     )
 
 
@@ -90,14 +95,14 @@ async def auto_detect(m: Message):
 
     # 🚫 Flood control
     if is_flood(m.from_user.id, RATE_LIMIT, RATE_TIME):
-        return await m.reply("🛑 Thoda slow karo")
+        return await m.reply("🛑 Slow down. You’re safe here.")
 
     # 📌 Daily limit
     if m.from_user.id not in OWNER_IDS:
         if not check_daily(m.from_user.id):
             return await m.reply(
-                "🚫 <b>Daily limit khatam</b>\n\n"
-                "📌 Sirf 4 Pinterest downloads / day allowed"
+                "🧠 <b>Daily limit reached.</b>\n"
+                "Rest. Come back tomorrow 🌙"
             )
 
     url = match.group(1)
@@ -117,7 +122,7 @@ async def auto_detect(m: Message):
         )
 
     if not images:
-        return await m.reply("❌ No media found")
+        return await m.reply("❌ No media found. Maybe wrong link?")
 
     # 🖼 SINGLE IMAGE
     if len(images) == 1:
@@ -155,7 +160,7 @@ async def inline_handler(q: InlineQuery):
 
 
 async def main():
-    print("🔥 Bot started successfully")
+    print("🧠 Psychologist Bot is listening…")
     await dp.start_polling(bot)
 
 
