@@ -8,7 +8,7 @@ from aiogram.types import (
     InlineQueryResultPhoto
 )
 from aiogram.filters import CommandStart
-from aiogram.exceptions import TelegramBadRequest
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
 from config import (
     BOT_TOKEN,
@@ -42,14 +42,20 @@ CREDIT_TEXT = (
 )
 
 
-# 🔒 FORCE SUBSCRIBE
+# 🔒 FORCE SUBSCRIBE (FINAL FIX)
 async def force_sub(m: Message) -> bool:
     uid = m.from_user.id
     try:
-        await bot.get_chat_member(FORCE_CHANNEL_1, uid)
-        await bot.get_chat_member(FORCE_CHANNEL_2, uid)
-        return True
-    except TelegramBadRequest:
+        ch1 = await bot.get_chat_member(FORCE_CHANNEL_1, uid)
+        ch2 = await bot.get_chat_member(FORCE_CHANNEL_2, uid)
+
+        if ch1.status in ("member", "administrator", "creator") and \
+           ch2.status in ("member", "administrator", "creator"):
+            return True
+
+        raise TelegramBadRequest("User not joined")
+
+    except (TelegramBadRequest, TelegramForbiddenError):
         await m.answer(
             "🚫 <b>Bot use karne se pehle dono channel join karo</b>\n\n"
             f"👉 {FORCE_CHANNEL_1}\n"
