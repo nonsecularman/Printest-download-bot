@@ -1,17 +1,21 @@
 BOT_TOKEN = "8372754673:AAH5VApTyIxZKX3Ui3SShY4-cTuvk0i2NPQ"
 
-OWNER_ID = 7519668949
+# 👑 OWNERS (UNLIMITED)
+OWNER_IDS = [
+    7519668949
+    # yahan aur IDs add kar sakte ho
+]
 
-# Cache
+# ⏳ Cache
 CACHE_TIME = 3600
 
-# Flood / Rate
+# 🚦 Flood / Rate limit
 RATE_LIMIT = 3
 RATE_TIME = 10
 
-# 🔒 FORCE SUB CHANNELS
+# 🔒 Force Subscribe Channels
 FORCE_CHANNEL_1 = "@iscamz"
 FORCE_CHANNEL_2 = "@kryshupdate"
 
-# 📌 DAILY LIMIT
+# 📌 Daily limit (normal users)
 DAILY_LIMIT = 4
