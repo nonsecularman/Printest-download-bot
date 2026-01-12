@@ -1,5 +1,4 @@
-fastapi
-uvicorn
+aiogram==3.4.1
 aiohttp
 beautifulsoup4
 lxml
