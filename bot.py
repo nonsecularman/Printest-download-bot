@@ -17,7 +17,7 @@ from config import (
     RATE_TIME,
     FORCE_CHANNEL_1,
     FORCE_CHANNEL_2,
-    OWNER_ID
+    OWNER_IDS
 )
 
 from pinterest import fetch_pin
@@ -86,8 +86,8 @@ async def auto_detect(m: Message):
     if is_flood(m.from_user.id, RATE_LIMIT, RATE_TIME):
         return await m.reply("🛑 Thoda slow karo")
 
-    # 📌 Daily limit (OWNER unlimited)
-    if m.from_user.id != OWNER_ID:
+    # 📌 Daily limit (OWNERS unlimited)
+    if m.from_user.id not in OWNER_IDS:
         if not check_daily(m.from_user.id):
             return await m.reply(
                 "🚫 <b>Daily limit khatam</b>\n\n"
