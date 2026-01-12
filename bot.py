@@ -3,16 +3,23 @@ import asyncio
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import Message, InlineQuery, InlineQueryResultPhoto
 from aiogram.filters import CommandStart
+
 from config import BOT_TOKEN, CACHE_TIME, RATE_LIMIT, RATE_TIME
 from pinterest import fetch_pin
 from cache import get_cache, set_cache
 from flood import is_flood
 from zip_utils import make_zip
 
-bot = Bot(BOT_TOKEN)
+# 🔥 BOT INIT (FIXED)
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN is missing! Check Heroku Config Vars")
+
+bot = Bot(BOT_TOKEN, parse_mode="HTML")
 dp = Dispatcher()
 
-PIN_REGEX = re.compile(r"(https?://(www\.)?(pinterest\.com/pin/\S+|pin\.it/\S+))")
+PIN_REGEX = re.compile(
+    r"(https?://(www\.)?(pinterest\.com/pin/\S+|pin\.it/\S+))"
+)
 
 @dp.message(CommandStart())
 async def start(m: Message):
@@ -46,7 +53,11 @@ async def auto_detect(m: Message):
         await m.reply_photo(images[0])
     else:
         zip_path = await make_zip(images, "pinterest_album")
-        await m.reply_document(open(zip_path, "rb"), caption="📂 Pinterest Album (ZIP)")
+        with open(zip_path, "rb") as f:
+            await m.reply_document(
+                f,
+                caption="📂 Pinterest Album (ZIP)"
+            )
 
 @dp.inline_query()
 async def inline_handler(q: InlineQuery):
@@ -65,6 +76,7 @@ async def inline_handler(q: InlineQuery):
     await bot.answer_inline_query(q.id, results)
 
 async def main():
+    print("🔥 Bot started successfully")
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
