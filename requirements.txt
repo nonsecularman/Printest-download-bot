@@ -1,5 +1,6 @@
-aiogram==3.4.1
+fastapi
+uvicorn
 aiohttp
 beautifulsoup4
 lxml
-python-dotenv
+pydantic
