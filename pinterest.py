@@ -13,8 +13,13 @@ async def resolve_pin_url(url):
             return str(r.url)
 
 async def fetch_pin(url):
+    # 🔥 pin.it resolve
     if "pin.it" in url:
         url = await resolve_pin_url(url)
+
+    # ❌ NOT A SINGLE PIN
+    if "/pin/" not in url:
+        return [], None, "NOT_A_PIN"
 
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         async with session.get(url) as r:
@@ -22,14 +27,12 @@ async def fetch_pin(url):
 
     soup = BeautifulSoup(html, "lxml")
 
-    # images
     images = list({
         img["src"]
         for img in soup.find_all("img")
         if img.get("src") and ("originals" in img["src"] or "736x" in img["src"])
     })
 
-    # video
     video = None
     for script in soup.find_all("script"):
         if script.string and "video_list" in script.string:
@@ -46,4 +49,4 @@ async def fetch_pin(url):
             except:
                 pass
 
-    return images, video
+    return images, video, None
