@@ -22,18 +22,20 @@ async def fetch_pin(url):
 
     soup = BeautifulSoup(html, "lxml")
 
+    # images
     images = list({
         img["src"]
         for img in soup.find_all("img")
         if img.get("src") and ("originals" in img["src"] or "736x" in img["src"])
     })
 
+    # video
     video = None
     for script in soup.find_all("script"):
         if script.string and "video_list" in script.string:
             try:
                 data = json.loads(
-                    re.search(r'\{.*\}', script.string, re.S).group()
+                    re.search(r"\{.*\}", script.string, re.S).group()
                 )
                 pins = data["props"]["initialReduxState"]["pins"]
                 pin_id = next(iter(pins))
