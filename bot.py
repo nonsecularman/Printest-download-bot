@@ -1,16 +1,32 @@
 import re
 import asyncio
-import os
-import uuid
-import aiohttp
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message
+from aiogram.types import (
+    Message,
+    InlineQuery,
+    InlineQueryResultPhoto
+)
 from aiogram.filters import CommandStart
+from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 
-from config import BOT_TOKEN
+from config import (
+    BOT_TOKEN,
+    CACHE_TIME,
+    RATE_LIMIT,
+    RATE_TIME,
+    FORCE_CHANNEL_1,
+    FORCE_CHANNEL_2,
+    OWNER_IDS
+)
+
 from pinterest import fetch_pin
+from cache import get_cache, set_cache
+from flood import is_flood, check_daily
+from zip_utils import make_zip
 
+
+# 🔥 BOT INIT
 bot = Bot(BOT_TOKEN, parse_mode="HTML")
 dp = Dispatcher()
 
@@ -18,91 +34,128 @@ PIN_REGEX = re.compile(
     r"(https?://(www\.)?(pinterest\.com/pin/\S+|pin\.it/\S+))"
 )
 
-CREDIT_TEXT = "📌 Pinterest Downloader\n💠 @iscamz"
+CREDIT_TEXT = (
+    "━━━━━━━━━━━━━━\n"
+    "📌 Pinterest Download\n"
+    "💠 Credit: @iscamz\n"
+    "━━━━━━━━━━━━━━"
+)
 
 
-# 🔥 VIDEO DOWNLOADER (DOWNLOAD → UPLOAD)
-async def download_video(url: str) -> str:
-    path = f"/tmp/{uuid.uuid4()}.mp4"
+# 🔒 FORCE SUBSCRIBE
+async def force_sub(m: Message) -> bool:
+    uid = m.from_user.id
+    try:
+        ch1 = await bot.get_chat_member(FORCE_CHANNEL_1, uid)
+        ch2 = await bot.get_chat_member(FORCE_CHANNEL_2, uid)
 
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                raise Exception("Video download failed")
+        if ch1.status in ("member", "administrator", "creator") and \
+           ch2.status in ("member", "administrator", "creator"):
+            return True
 
-            with open(path, "wb") as f:
-                while True:
-                    chunk = await resp.content.read(1024 * 1024)
-                    if not chunk:
-                        break
-                    f.write(chunk)
+        raise TelegramBadRequest("User not joined")
 
-    return path
+    except (TelegramBadRequest, TelegramForbiddenError):
+        await m.answer(
+            "🚫 <b>Bot use karne se pehle dono channel join karo</b>\n\n"
+            f"👉 {FORCE_CHANNEL_1}\n"
+            f"👉 {FORCE_CHANNEL_2}\n\n"
+            "✅ Join ke baad /start bhejo"
+        )
+        return False
 
 
 @dp.message(CommandStart())
 async def start(m: Message):
+    if not await force_sub(m):
+        return
+
     await m.answer(
-        "📌 <b>Pinterest Downloader</b>\n\n"
-        "✅ Direct Pinterest <code>/pin/</code> links supported\n"
-        "🎥 Video + 🖼 Image\n\n"
-        "📎 Example:\n"
-        "<code>https://www.pinterest.com/pin/XXXXXXXX</code>"
+        "📌 <b>Pinterest Downloader Bot</b>\n\n"
+        "🔹 Pinterest link bhejo\n"
+        "🔹 Images / Videos download honge\n\n"
+        "⚠️ Daily limit: <b>4 downloads</b>\n"
+        "👑 Owner: Unlimited"
     )
 
 
 @dp.message(F.text)
-async def handle_pin(m: Message):
+async def auto_detect(m: Message):
+    if not await force_sub(m):
+        return
+
     match = PIN_REGEX.search(m.text)
     if not match:
         return
 
+    # 🚫 Flood control
+    if is_flood(m.from_user.id, RATE_LIMIT, RATE_TIME):
+        return await m.reply("🛑 Thoda slow karo")
+
+    # 📌 Daily limit
+    if m.from_user.id not in OWNER_IDS:
+        if not check_daily(m.from_user.id):
+            return await m.reply(
+                "🚫 <b>Daily limit khatam</b>\n\n"
+                "📌 Sirf 4 Pinterest downloads / day allowed"
+            )
+
     url = match.group(1)
-    await m.reply("⏳ Downloading...")
 
-    try:
-        # ✅ FIX IS HERE
-        images, video, error = await fetch_pin(url)
-    except Exception:
-        return await m.reply("❌ Pinterest fetch error")
+    cached = get_cache(url)
+    if cached:
+        images, video = cached
+    else:
+        images, video = await fetch_pin(url)
+        set_cache(url, (images, video), CACHE_TIME)
 
-    # ❌ NOT A SINGLE PIN
-    if error == "NOT_A_PIN":
-        return await m.reply(
-            "❌ <b>Ye single Pinterest pin nahi hai</b>\n\n"
-            "✅ Sirf <code>pinterest.com/pin/...</code> links supported\n\n"
-            "📌 Tip: Video/image pe tap karke uska direct link copy karo"
+    # 🎥 VIDEO
+    if video:
+        return await m.reply_video(
+            video,
+            caption=f"🎥 HD Pinterest Video\n\n{CREDIT_TEXT}"
         )
 
-    # 🎥 VIDEO (DOWNLOAD → UPLOAD)
-    if video:
-        try:
-            video_path = await download_video(video)
+    if not images:
+        return await m.reply("❌ No media found")
 
-            with open(video_path, "rb") as f:
-                await m.reply_video(
-                    f,
-                    caption=f"🎥 Pinterest Video\n\n{CREDIT_TEXT}"
-                )
-
-            os.remove(video_path)
-            return
-
-        except Exception:
-            return await m.reply("❌ Video download/upload failed")
-
-    # 🖼 IMAGE FALLBACK
-    if images:
+    # 🖼 SINGLE IMAGE
+    if len(images) == 1:
         return await m.reply_photo(
             images[0],
             caption=CREDIT_TEXT
         )
 
-    await m.reply("❌ No media found")
+    # 📂 MULTIPLE → ZIP
+    zip_path = await make_zip(images, "pinterest_album")
+    with open(zip_path, "rb") as f:
+        await m.reply_document(
+            f,
+            caption=f"📂 Pinterest Album (ZIP)\n\n{CREDIT_TEXT}"
+        )
+
+
+@dp.inline_query()
+async def inline_handler(q: InlineQuery):
+    if not PIN_REGEX.match(q.query):
+        return
+
+    images, _ = await fetch_pin(q.query)
+
+    results = [
+        InlineQueryResultPhoto(
+            id=str(i),
+            photo_url=img,
+            thumbnail_url=img
+        )
+        for i, img in enumerate(images[:5])
+    ]
+
+    await bot.answer_inline_query(q.id, results)
 
 
 async def main():
-    print("🔥 Bot started")
+    print("🔥 Bot started successfully")
     await dp.start_polling(bot)
 
 
