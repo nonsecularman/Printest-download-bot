@@ -1,11 +1,15 @@
 import re
 import asyncio
+import os
+import uuid
+import aiohttp
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
     Message,
     InlineQuery,
-    InlineQueryResultPhoto
+    InlineQueryResultArticle,
+    InputTextMessageContent
 )
 from aiogram.filters import CommandStart
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -27,12 +31,11 @@ from flood import is_flood, check_daily
 from zip_utils import make_zip
 
 
-# 🔥 BOT INIT (aiogram v3 FINAL)
+# 🔥 BOT INIT (aiogram v3)
 bot = Bot(
     BOT_TOKEN,
     default=DefaultBotProperties(parse_mode="HTML")
 )
-
 dp = Dispatcher()
 
 PIN_REGEX = re.compile(
@@ -47,6 +50,22 @@ CREDIT_TEXT = (
 )
 
 
+# 📥 IMAGE DOWNLOADER (FINAL FIX)
+async def download_image(url: str) -> str | None:
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, timeout=30) as r:
+                if r.status != 200:
+                    return None
+
+                path = f"/tmp/{uuid.uuid4().hex}.jpg"
+                with open(path, "wb") as f:
+                    f.write(await r.read())
+                return path
+    except:
+        return None
+
+
 # 🔒 FORCE SUBSCRIBE
 async def force_sub(m: Message) -> bool:
     uid = m.from_user.id
@@ -58,7 +77,7 @@ async def force_sub(m: Message) -> bool:
            ch2.status in ("member", "administrator", "creator"):
             return True
 
-        raise TelegramBadRequest("User not joined")
+        raise TelegramBadRequest("Not joined")
 
     except (TelegramBadRequest, TelegramForbiddenError):
         await m.answer(
@@ -97,72 +116,6 @@ async def auto_detect(m: Message):
     if is_flood(m.from_user.id, RATE_LIMIT, RATE_TIME):
         return await m.reply("🛑 Thoda slow karo")
 
-    # 📌 Daily limit (owners unlimited)
+    # 📌 Daily limit
     if m.from_user.id not in OWNER_IDS:
-        if not check_daily(m.from_user.id):
-            return await m.reply(
-                "🚫 <b>Daily limit khatam</b>\n\n"
-                "📌 Sirf 4 Pinterest downloads / day allowed"
-            )
-
-    url = match.group(1)
-
-    cached = get_cache(url)
-    if cached:
-        images, video = cached
-    else:
-        images, video = await fetch_pin(url)
-        set_cache(url, (images, video), CACHE_TIME)
-
-    # 🎥 VIDEO
-    if video:
-        return await m.reply_video(
-            video,
-            caption=f"🎥 HD Pinterest Video\n\n{CREDIT_TEXT}"
-        )
-
-    if not images:
-        return await m.reply("❌ No media found")
-
-    # 🖼 SINGLE IMAGE
-    if len(images) == 1:
-        return await m.reply_photo(
-            images[0],
-            caption=CREDIT_TEXT
-        )
-
-    # 📂 MULTIPLE → ZIP
-    zip_path = await make_zip(images, "pinterest_album")
-    with open(zip_path, "rb") as f:
-        await m.reply_document(
-            f,
-            caption=f"📂 Pinterest Album (ZIP)\n\n{CREDIT_TEXT}"
-        )
-
-
-@dp.inline_query()
-async def inline_handler(q: InlineQuery):
-    if not PIN_REGEX.match(q.query):
-        return
-
-    images, _ = await fetch_pin(q.query)
-    results = [
-        InlineQueryResultPhoto(
-            id=str(i),
-            photo_url=img,
-            thumbnail_url=img
-        )
-        for i, img in enumerate(images[:5])
-    ]
-
-    await bot.answer_inline_query(q.id, results)
-
-
-async def main():
-    print("🔥 Bot started successfully")
-    await dp.start_polling(bot)
-
-
-# ✅ FINAL ENTRY POINT FIX
-if __name__ == "__main__":
-    asyncio.run(main())
+        if not check_dail_
