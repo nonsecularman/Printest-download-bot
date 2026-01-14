@@ -50,7 +50,7 @@ CREDIT_TEXT = (
 )
 
 
-# 📥 IMAGE DOWNLOADER (FINAL FIX)
+# 📥 IMAGE DOWNLOADER (Pinterest fix)
 async def download_image(url: str) -> str | None:
     try:
         async with aiohttp.ClientSession() as session:
@@ -118,4 +118,78 @@ async def auto_detect(m: Message):
 
     # 📌 Daily limit
     if m.from_user.id not in OWNER_IDS:
-        if not check_dail_
+        if not check_daily(m.from_user.id):
+            return await m.reply(
+                "🚫 <b>Daily limit khatam</b>\n\n"
+                "📌 Sirf 4 Pinterest downloads / day allowed"
+            )
+
+    url = match.group(1)
+
+    cached = get_cache(url)
+    if cached:
+        images, video = cached
+    else:
+        data = await fetch_pin(url)     # 🔥 SAFE UNPACK
+        images = data[0]
+        video = data[1]
+        set_cache(url, (images, video), CACHE_TIME)
+
+    # 🎥 VIDEO
+    if video:
+        return await m.reply_video(
+            video,
+            caption=f"🎥 HD Pinterest Video\n\n{CREDIT_TEXT}"
+        )
+
+    if not images:
+        return await m.reply("❌ No media found")
+
+    # 🖼 SINGLE IMAGE
+    if len(images) == 1:
+        img_path = await download_image(images[0])
+        if not img_path:
+            return await m.reply("❌ Image download failed")
+
+        with open(img_path, "rb") as f:
+            await m.reply_photo(f, caption=CREDIT_TEXT)
+
+        os.remove(img_path)
+        return
+
+    # 📂 MULTIPLE IMAGES → ZIP
+    zip_path = await make_zip(images, "pinterest_album")
+    with open(zip_path, "rb") as f:
+        await m.reply_document(
+            f,
+            caption=f"📂 Pinterest Album (ZIP)\n\n{CREDIT_TEXT}"
+        )
+
+
+# 🔎 INLINE MODE (SAFE)
+@dp.inline_query()
+async def inline_handler(q: InlineQuery):
+    result = InlineQueryResultArticle(
+        id="pinterest",
+        title="📌 Pinterest Downloader",
+        description="Bot ke private chat me Pinterest link bhejo",
+        input_message_content=InputTextMessageContent(
+            message_text="📌 Bot ke private chat me Pinterest link bhejo"
+        )
+    )
+
+    await bot.answer_inline_query(
+        q.id,
+        results=[result],
+        cache_time=5
+    )
+
+
+async def main():
+    print("🔥 Bot started successfully")
+    await dp.start_polling(bot)
+
+
+# ✅ ENTRY POINT (FINAL)
+if __name__ == "__main__":
+    asyncio.run(main())
