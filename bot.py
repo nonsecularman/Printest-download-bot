@@ -9,6 +9,7 @@ from aiogram.types import (
 )
 from aiogram.filters import CommandStart
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
+from aiogram.client.default import DefaultBotProperties
 
 from config import (
     BOT_TOKEN,
@@ -26,8 +27,12 @@ from flood import is_flood, check_daily
 from zip_utils import make_zip
 
 
-# 🔥 BOT INIT
-bot = Bot(BOT_TOKEN, parse_mode="HTML")
+# 🔥 BOT INIT (aiogram v3 FINAL)
+bot = Bot(
+    BOT_TOKEN,
+    default=DefaultBotProperties(parse_mode="HTML")
+)
+
 dp = Dispatcher()
 
 PIN_REGEX = re.compile(
@@ -42,7 +47,7 @@ CREDIT_TEXT = (
 )
 
 
-# 🔒 FORCE SUBSCRIBE (FINAL FIX)
+# 🔒 FORCE SUBSCRIBE
 async def force_sub(m: Message) -> bool:
     uid = m.from_user.id
     try:
@@ -92,7 +97,7 @@ async def auto_detect(m: Message):
     if is_flood(m.from_user.id, RATE_LIMIT, RATE_TIME):
         return await m.reply("🛑 Thoda slow karo")
 
-    # 📌 Daily limit (OWNERS unlimited)
+    # 📌 Daily limit (owners unlimited)
     if m.from_user.id not in OWNER_IDS:
         if not check_daily(m.from_user.id):
             return await m.reply(
@@ -149,6 +154,7 @@ async def inline_handler(q: InlineQuery):
         )
         for i, img in enumerate(images[:5])
     ]
+
     await bot.answer_inline_query(q.id, results)
 
 
@@ -157,5 +163,6 @@ async def main():
     await dp.start_polling(bot)
 
 
-if name == "main":
+# ✅ FINAL ENTRY POINT FIX
+if __name__ == "__main__":
     asyncio.run(main())
