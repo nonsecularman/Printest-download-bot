@@ -9,7 +9,8 @@ from aiogram.types import (
     Message,
     InlineQuery,
     InlineQueryResultArticle,
-    InputTextMessageContent
+    InputTextMessageContent,
+    FSInputFile
 )
 from aiogram.filters import CommandStart
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
@@ -31,7 +32,7 @@ from flood import is_flood, check_daily
 from zip_utils import make_zip
 
 
-# 🔥 BOT INIT (aiogram v3)
+# 🔥 BOT INIT (aiogram v3 SAFE)
 bot = Bot(
     BOT_TOKEN,
     default=DefaultBotProperties(parse_mode="HTML")
@@ -50,7 +51,7 @@ CREDIT_TEXT = (
 )
 
 
-# 📥 IMAGE DOWNLOADER (Pinterest fix)
+# 📥 IMAGE DOWNLOADER
 async def download_image(url: str) -> str | None:
     try:
         async with aiohttp.ClientSession() as session:
@@ -130,12 +131,10 @@ async def auto_detect(m: Message):
     if cached:
         images, video = cached
     else:
-        data = await fetch_pin(url)     # 🔥 SAFE UNPACK
-        images = data[0]
-        video = data[1]
+        images, video = (await fetch_pin(url))[:2]
         set_cache(url, (images, video), CACHE_TIME)
 
-    # 🎥 VIDEO
+    # 🎥 VIDEO (URL direct OK)
     if video:
         return await m.reply_video(
             video,
@@ -151,19 +150,21 @@ async def auto_detect(m: Message):
         if not img_path:
             return await m.reply("❌ Image download failed")
 
-        with open(img_path, "rb") as f:
-            await m.reply_photo(f, caption=CREDIT_TEXT)
+        photo = FSInputFile(img_path)
+        await m.reply_photo(photo, caption=CREDIT_TEXT)
 
         os.remove(img_path)
         return
 
-    # 📂 MULTIPLE IMAGES → ZIP
+    # 📂 MULTIPLE → ZIP
     zip_path = await make_zip(images, "pinterest_album")
-    with open(zip_path, "rb") as f:
-        await m.reply_document(
-            f,
-            caption=f"📂 Pinterest Album (ZIP)\n\n{CREDIT_TEXT}"
-        )
+    doc = FSInputFile(zip_path)
+    await m.reply_document(
+        doc,
+        caption=f"📂 Pinterest Album (ZIP)\n\n{CREDIT_TEXT}"
+    )
+
+    os.remove(zip_path)
 
 
 # 🔎 INLINE MODE (SAFE)
@@ -190,6 +191,5 @@ async def main():
     await dp.start_polling(bot)
 
 
-# ✅ ENTRY POINT (FINAL)
 if __name__ == "__main__":
     asyncio.run(main())
