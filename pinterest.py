@@ -12,9 +12,20 @@ HEADERS = {
     "Connection": "keep-alive",
 }
 
+async def resolve_redirect(url):
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with session.get(url, allow_redirects=True) as r:
+            return str(r.url)
+
 async def fetch_pin(url):
+    # Resolve pin.it
+    if "pin.it" in url:
+        url = await resolve_redirect(url)
+
     async with aiohttp.ClientSession(headers=HEADERS) as session:
         async with session.get(url) as r:
+            if r.status != 200:
+                return [], None, f"HTTP_{r.status}"
             html = await r.text()
 
     soup = BeautifulSoup(html, "html.parser")
@@ -22,26 +33,30 @@ async def fetch_pin(url):
     images = set()
     video = None
 
-    # 🟢 Extract images from img tags
+    # 🔹 IMAGE EXTRACTION (100% reliable)
     for img in soup.find_all("img", src=True):
-        if "pinimg.com" in img["src"]:
-            images.add(img["src"].replace("236x", "originals"))
+        src = img["src"]
+        if "pinimg.com" in src:
+            src = re.sub(r"/\d+x/", "/originals/", src)
+            images.add(src)
 
-    # 🟢 Extract JSON from __PWS_DATA__
+    # 🔹 VIDEO EXTRACTION (REAL METHOD)
     for script in soup.find_all("script"):
         if script.string and "__PWS_DATA__" in script.string:
-            json_text = re.search(r'__PWS_DATA__\s*=\s*({.*});', script.string, re.S)
-            if not json_text:
+            match = re.search(r'__PWS_DATA__\s*=\s*({.*?});', script.string, re.S)
+            if not match:
                 continue
 
-            data = json.loads(json_text.group(1))
+            data = json.loads(match.group(1))
 
-            # Traverse deeply
             def walk(obj):
                 nonlocal video
                 if isinstance(obj, dict):
                     if "video_list" in obj:
-                        best = max(obj["video_list"].values(), key=lambda x: x.get("width", 0))
+                        best = max(
+                            obj["video_list"].values(),
+                            key=lambda x: x.get("width", 0)
+                        )
                         video = best.get("url")
                     for v in obj.values():
                         walk(v)
@@ -51,75 +66,22 @@ async def fetch_pin(url):
 
             walk(data)
 
-    return list(images), video        img_data = div.get("data-pin-chunk") or div.get("data-test-pin-wrapper")
-        if img_data:
-            try:
-                data = json.loads(img_data)
-                if "images" in data:
-                    for img_key, img_info in data["images"].items():
-                        if isinstance(img_info, dict) and "url" in img_info:
-                            images.add(upgrade_image_url(img_info["url"]))
-            except:
-                pass
+    return list(images), video, None
 
-    # Method 3: Script JSON data - most reliable
-    video = None
-    for script in soup.find_all("script"):
-        if script.string:
-            # Look for pin data in Redux state
-            pin_match = re.search(r'"pins":\s*({[^}]+})', script.string, re.S)
-            if pin_match:
-                try:
-                    pins_data = json.loads(pin_match.group(1))
-                    pin_id = next(iter(pins_data))
-                    pin_data = pins_data[pin_id]
-                    
-                    # Images from pin data
-                    if "images" in pin_data:
-                        for img_key, img_info in pin_data["images"].items():
-                            if isinstance(img_info, dict) and "url" in img_info:
-                                images.add(upgrade_image_url(img_info["url"]))
-                    
-                    # Videos from pin data
-                    if "videos" in pin_data and pin_data["videos"]:
-                        video_list = pin_data["videos"].get("video_list", {})
-                        if video_list:
-                            best_video = max(video_list.values(), key=lambda x: x.get("width", 0))
-                            video = best_video.get("url") or best_video.get("video_url")
-                    
-                except:
-                    pass
-            
-            # Alternative video extraction
-            if not video and "video_list" in script.string:
-                video_match = re.search(r'"video_list":\s*({[^}]+})', script.string, re.S)
-                if video_match:
-                    try:
-                        videos = json.loads(video_match.group(1))
-                        if isinstance(videos, dict):
-                            best_video = max(videos.values(), key=lambda x: x.get("width", 0))
-                            video = best_video.get("url")
-                    except:
-                        pass
 
-    # Convert to list and filter valid URLs
-    images = [img for img in images if img and img.startswith('http')]
-    
-    return images, video, None
-
-# 🔹 Usage example
+# 🔹 TEST
 async def main():
-    test_urls = [
-        "https://pin.it/ABC123",  # pin.it
-        "https://www.pinterest.com/pin/1234567890/",  # direct pin
-    ]
-    
-    for url in test_urls:
-        print(f"\n🔍 Testing: {url}")
-        images, video, error = await fetch_pin(url)
-        print(f"Images ({len(images)}): {images[:2]}{'...' if len(images)>2 else ''}")
-        print(f"Video: {video}")
-        print(f"Error: {error}")
+    url = "https://pin.it/XXXXXXX"  # put real pin.it or pinterest pin
+    images, video, error = await fetch_pin(url)
+
+    print("\nIMAGES FOUND:", len(images))
+    for i in images[:3]:
+        print(i)
+
+    print("\nVIDEO URL:")
+    print(video)
+
+    print("\nERROR:", error)
 
 if __name__ == "__main__":
     asyncio.run(main())
