@@ -1,107 +1,57 @@
 import aiohttp
+import asyncio
 import json
 import re
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
-import asyncio
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Accept-Encoding": "gzip, deflate",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
     "Connection": "keep-alive",
-    "Upgrade-Insecure-Requests": "1",
 }
 
-async def resolve_pin_url(url):
-    """Resolve pin.it and other short URLs to real pin URL"""
-    async with aiohttp.ClientSession(
-        headers=HEADERS, 
-        timeout=aiohttp.ClientTimeout(total=30)
-    ) as session:
-        async with session.get(url, allow_redirects=True, follow_redirects=True) as r:
-            return str(r.url), await r.text()
-
-def extract_first_pin(html: str):
-    """Extract first real /pin/ link from discover/search pages"""
-    soup = BeautifulSoup(html, "html.parser")
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if href.startswith("/pin/") and "pin" in href:
-            return "https://www.pinterest.com" + href
-    return None
-
-def upgrade_image_url(url: str) -> str:
-    """Upgrade image URLs to highest quality (remove size params, add 736x/1080x)"""
-    if not url or not url.startswith('http'):
-        return url
-    
-    parsed = urlparse(url)
-    path = parsed.path
-    
-    # Replace size params with highest quality
-    path = re.sub(r'/\d+x\d+(v\d+)?/', '/736x/', path)
-    path = re.sub(r'236x|474x|736x|564x|150x|120x', 'originals', path)
-    
-    # Pinterest high quality patterns
-    if 'static' in path:
-        path = path.replace('236x', '736x').replace('474x', '1080x')
-    
-    return urljoin(url, path)
-
 async def fetch_pin(url):
-    """Fetch high quality images and videos from Pinterest pin"""
-    html = None
-    final_url = url
-
-    # 🔥 Handle pin.it redirects
-    if "pin.it" in url or any(short in url for short in ["/t/", "/p/"]):
-        try:
-            final_url, html = await resolve_pin_url(url)
-        except:
-            pass
-
-    # ❌ Not a direct pin → try extracting one
-    if "/pin/" not in final_url:
-        if not html:
-            async with aiohttp.ClientSession(headers=HEADERS, timeout=aiohttp.ClientTimeout(total=30)) as session:
-                async with session.get(final_url) as r:
-                    html = await r.text()
-
-        pin_url = extract_first_pin(html)
-        if not pin_url:
-            return [], None, "NO_PIN_FOUND"
-        final_url = pin_url
-
-    # 🔥 Fetch the pin page with better headers
-    try:
-        async with aiohttp.ClientSession(
-            headers=HEADERS, 
-            timeout=aiohttp.ClientTimeout(total=30),
-            cookies={'_pin_session': 'placeholder'}  # Pinterest often needs cookies
-        ) as session:
-            async with session.get(final_url, allow_redirects=True) as r:
-                if r.status != 200:
-                    return [], None, f"HTTP_{r.status}"
-                html = await r.text()
-    except Exception as e:
-        return [], None, f"FETCH_ERROR: {str(e)}"
+    async with aiohttp.ClientSession(headers=HEADERS) as session:
+        async with session.get(url) as r:
+            html = await r.text()
 
     soup = BeautifulSoup(html, "html.parser")
 
-    # 🖼️ HIGH QUALITY IMAGES - Multiple extraction methods
     images = set()
-    
-    # Method 1: Originals and high-res from img tags
-    for img in soup.find_all("img", src=True):
-        src = img["src"]
-        if any(high in src for high in ["originals", "736x", "1080x", "564x"]):
-            images.add(upgrade_image_url(src))
+    video = None
 
-    # Method 2: Data attributes with high quality images
-    for div in soup.find_all(attrs={"data-test-id": "pin-wrapper"}):
-        img_data = div.get("data-pin-chunk") or div.get("data-test-pin-wrapper")
+    # 🟢 Extract images from img tags
+    for img in soup.find_all("img", src=True):
+        if "pinimg.com" in img["src"]:
+            images.add(img["src"].replace("236x", "originals"))
+
+    # 🟢 Extract JSON from __PWS_DATA__
+    for script in soup.find_all("script"):
+        if script.string and "__PWS_DATA__" in script.string:
+            json_text = re.search(r'__PWS_DATA__\s*=\s*({.*});', script.string, re.S)
+            if not json_text:
+                continue
+
+            data = json.loads(json_text.group(1))
+
+            # Traverse deeply
+            def walk(obj):
+                nonlocal video
+                if isinstance(obj, dict):
+                    if "video_list" in obj:
+                        best = max(obj["video_list"].values(), key=lambda x: x.get("width", 0))
+                        video = best.get("url")
+                    for v in obj.values():
+                        walk(v)
+                elif isinstance(obj, list):
+                    for i in obj:
+                        walk(i)
+
+            walk(data)
+
+    return list(images), video        img_data = div.get("data-pin-chunk") or div.get("data-test-pin-wrapper")
         if img_data:
             try:
                 data = json.loads(img_data)
