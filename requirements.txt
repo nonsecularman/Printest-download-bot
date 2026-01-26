@@ -1,27 +1,26 @@
-aiogram==3.4.1
-aiohttp
-beautifulsoup4
-lxml
 # Core Bot Framework
 aiogram==3.4.1
 
 # HTTP Client
 aiohttp==3.9.3
 
+# ✅ Brotli Support (Pinterest Fix)
+Brotli==1.1.0
+
 # HTML Parsing
 beautifulsoup4==4.12.3
 lxml==5.2.1
-html5lib==1.1  # Fallback parser for BS4
+html5lib==1.1
 
 # Utilities
-pathlib2==2.3.7.post1  # Windows pathlib compat
-python-dotenv==1.0.0   # .env support
+pathlib2==2.3.7.post1
+python-dotenv==1.0.0
 
 # ZIP Compression
-zipfile36==0.1.3  # Enhanced zip utils
+zipfile36==0.1.3
 
 # Async Support
-asyncio-mqtt==0.16.1  # If needed for future
+asyncio-mqtt==0.16.1
 
-# Cache & Rate Limiting (if separate modules)
-redis==5.0.1  # Optional: for production cache
+# Cache & Rate Limiting (Optional)
+redis==5.0.1
