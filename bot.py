@@ -11,7 +11,8 @@ from aiogram.types import (
     InlineQuery,
     InlineQueryResultArticle,
     InputTextMessageContent,
-    FSInputFile
+    FSInputFile,
+    InputMediaPhoto
 )
 from aiogram.filters import CommandStart
 from aiogram.client.default import DefaultBotProperties
@@ -28,7 +29,6 @@ from config import (
 from pinterest import fetch_pin
 from cache import get_cache, set_cache, cleanup_cache
 from flood import is_flood, check_daily
-from zip_utils import make_zip
 
 
 # 🔥 BOT INIT
@@ -45,6 +45,7 @@ PIN_REGEX = re.compile(
     r"(https?://(?:www\.)?(?:pinterest\.com/pin/\S+|pin\.it/\S+))"
 )
 
+# Credit Text
 CREDIT_TEXT = (
     "━━━━━━━━━━━━━━\n"
     "📌 <b>Pinterest Downloader</b>\n"
@@ -57,10 +58,9 @@ CREDIT_TEXT = (
 async def download_media(url: str, media_type="image"):
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "User-Agent": "Mozilla/5.0",
         "Referer": "https://www.pinterest.com/",
         "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
 
         # ✅ Brotli Fix
         "Accept-Encoding": "gzip, deflate"
@@ -72,32 +72,27 @@ async def download_media(url: str, media_type="image"):
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             async with session.get(url, allow_redirects=True) as r:
 
-                print("DOWNLOAD STATUS:", r.status)
-
                 if r.status != 200:
                     return None
 
                 content = await r.read()
 
-                # ⚠️ Pinterest Block HTML Page
+                # Block HTML pages
                 if b"<html" in content[:200].lower():
-                    print("⚠️ Pinterest returned HTML instead of media")
                     return None
 
-                # ⚠️ Small file check
                 if len(content) < 5000:
-                    print("⚠️ Pinterest blocked or empty file")
                     return None
 
-                # ✅ Extension Detect
-                ctype = r.headers.get("Content-Type", "")
+                # Extension Detect
+                ctype = r.headers.get("content-type", "")
 
                 if "video" in ctype or media_type == "video":
                     ext = "mp4"
-                elif "webp" in ctype:
-                    ext = "webp"
                 elif "png" in ctype:
                     ext = "png"
+                elif "webp" in ctype:
+                    ext = "webp"
                 else:
                     ext = "jpg"
 
@@ -106,8 +101,7 @@ async def download_media(url: str, media_type="image"):
 
                 return str(path)
 
-    except Exception as e:
-        print("Download Error:", e)
+    except:
         return None
 
 
@@ -121,7 +115,7 @@ async def start_cmd(m: Message):
         "• <code>pinterest.com/pin/xxxx</code>\n\n"
         "🎥 Videos\n"
         "🖼️ Images\n"
-        "📂 Albums ZIP\n\n"
+        "🖼️ Multi Images → Album Mode\n\n"
         "⚡ Fast & Stable"
     )
 
@@ -165,7 +159,7 @@ async def handle_pinterest(m: Message):
         if not images and not video:
             return await status.edit_text("❌ No media found!")
 
-        # 🎥 VIDEO DOWNLOAD
+        # 🎥 VIDEO
         if video:
             video_path = await download_media(video, "video")
 
@@ -176,6 +170,7 @@ async def handle_pinterest(m: Message):
                     caption="🎥 <b>HD Pinterest Video</b>\n\n" + CREDIT_TEXT
                 )
                 os.remove(video_path)
+
             else:
                 await status.delete()
                 await m.reply_video(video, caption="🎥 Video Link\n\n" + CREDIT_TEXT)
@@ -197,35 +192,35 @@ async def handle_pinterest(m: Message):
 
             else:
                 await status.delete()
-                await m.reply_photo(
-                    images[0],
-                    caption="⚠️ Direct URL Mode\n\n" + CREDIT_TEXT
-                )
+                await m.reply_photo(images[0], caption=CREDIT_TEXT)
 
             return
 
-        # 📂 MULTI IMAGE ZIP
+        # 🖼️ MULTIPLE IMAGES → ALBUM MODE (NO ZIP)
         if len(images) > 1:
 
-            await status.edit_text("📂 Creating ZIP album...")
+            await status.edit_text("🖼️ Sending images as Album...")
 
-            zip_path = await make_zip(images, "pinterest_album")
+            media_group = []
 
-            if zip_path:
-                await status.delete()
-                await m.reply_document(
-                    FSInputFile(zip_path),
-                    caption=f"📂 Album ({len(images)} images)\n\n{CREDIT_TEXT}"
-                )
-                os.remove(zip_path)
+            # Telegram limit = 10 photos per album
+            for img_url in images[:10]:
+                media_group.append(InputMediaPhoto(media=img_url))
 
-            else:
-                await status.edit_text("❌ ZIP creation failed!")
+            await status.delete()
+
+            # Send Album
+            await m.reply_media_group(media_group)
+
+            # Credit Message
+            await m.reply(CREDIT_TEXT)
+
+            if len(images) > 10:
+                await m.reply("⚠️ Only first 10 images sent (Telegram limit)")
 
             return
 
     except Exception as e:
-        print("BOT ERROR:", e)
         await status.edit_text(f"❌ Failed: {e}")
 
 
