@@ -11,14 +11,10 @@ from aiogram.types import (
     InlineQuery,
     InlineQueryResultArticle,
     InputTextMessageContent,
-    FSInputFile,
-    CallbackQuery,
-    InlineKeyboardMarkup
+    FSInputFile
 )
 from aiogram.filters import CommandStart
 from aiogram.client.default import DefaultBotProperties
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import (
@@ -26,8 +22,6 @@ from config import (
     CACHE_TIME,
     RATE_LIMIT,
     RATE_TIME,
-    FORCE_CHANNEL_1,
-    FORCE_CHANNEL_2,
     OWNER_IDS
 )
 
@@ -42,18 +36,13 @@ bot = Bot(
     BOT_TOKEN,
     default=DefaultBotProperties(parse_mode="HTML")
 )
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
 
-
-# FSM States
-class BotStates(StatesGroup):
-    waiting_start = State()
+dp = Dispatcher(storage=MemoryStorage())
 
 
 # Pinterest URL Regex
 PIN_REGEX = re.compile(
-    r"(https?://(?:www\.)?(?:pinterest\.com/pin/\S+|pin\.it/\S+|pinterest\.[a-z]+/p/\S+))"
+    r"(https?://(?:www\.)?(?:pinterest\.com/pin/\S+|pin\.it/\S+))"
 )
 
 CREDIT_TEXT = (
@@ -63,13 +52,18 @@ CREDIT_TEXT = (
     "━━━━━━━━━━━━━━"
 )
 
-# ✅ FIXED MEDIA DOWNLOADER
+
+# ✅ FINAL FIXED MEDIA DOWNLOADER
 async def download_media(url: str, media_type="image"):
+
     headers = {
-        "User-Agent": "Mozilla/5.0",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Referer": "https://www.pinterest.com/",
         "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9"
+        "Accept-Language": "en-US,en;q=0.9",
+
+        # ✅ Brotli Fix
+        "Accept-Encoding": "gzip, deflate"
     }
 
     try:
@@ -85,18 +79,25 @@ async def download_media(url: str, media_type="image"):
 
                 content = await r.read()
 
-                if len(content) < 5000:
-                    print("⚠️ Pinterest Blocked File")
+                # ⚠️ Pinterest Block HTML Page
+                if b"<html" in content[:200].lower():
+                    print("⚠️ Pinterest returned HTML instead of media")
                     return None
 
-                # Detect extension
+                # ⚠️ Small file check
+                if len(content) < 5000:
+                    print("⚠️ Pinterest blocked or empty file")
+                    return None
+
+                # ✅ Extension Detect
                 ctype = r.headers.get("Content-Type", "")
-                if "webp" in ctype:
+
+                if "video" in ctype or media_type == "video":
+                    ext = "mp4"
+                elif "webp" in ctype:
                     ext = "webp"
                 elif "png" in ctype:
                     ext = "png"
-                elif media_type == "video":
-                    ext = "mp4"
                 else:
                     ext = "jpg"
 
@@ -110,83 +111,45 @@ async def download_media(url: str, media_type="image"):
         return None
 
 
-# 🔒 FORCE SUBSCRIBE
-async def force_sub(m: Message) -> bool:
-    uid = m.from_user.id
-    try:
-        ch1 = await bot.get_chat_member(FORCE_CHANNEL_1, uid)
-        ch2 = await bot.get_chat_member(FORCE_CHANNEL_2, uid)
-        return (ch1.status in ("member", "administrator", "creator") and
-                ch2.status in ("member", "administrator", "creator"))
-    except:
-        return False
-
-
 # 🚀 START COMMAND
 @dp.message(CommandStart())
-async def private_start(m: Message, state: FSMContext):
-
-    uid = m.from_user.id
-
-    if uid in OWNER_IDS:
-        await state.clear()
-        return await show_main_menu(m)
-
-    if await force_sub(m):
-        await state.clear()
-        return await show_main_menu(m)
-
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [{"text": "✅ Join Channels", "callback_data": "join_channels"}],
-        [{"text": "ℹ️ How to use", "callback_data": "how_to_use"}]
-    ])
-
-    await state.set_state(BotStates.waiting_start)
-
+async def start_cmd(m: Message):
     await m.answer(
-        "🎉 <b>Welcome to Pinterest Downloader!</b>\n\n"
-        "📌 Send any Pinterest link to start downloading\n\n"
-        "⚠️ Join both channels first to unlock bot\n\n"
-        "👇 Choose option below:",
-        reply_markup=keyboard
-    )
-
-
-# 📌 MAIN MENU
-async def show_main_menu(m: Message):
-    await m.answer(
-        "📌 <b>Pinterest Downloader Ready!</b>\n\n"
-        "🔗 Send Pinterest link:\n"
+        "🎉 <b>Pinterest Downloader Ready!</b>\n\n"
+        "📌 Send any Pinterest link:\n"
         "• <code>pin.it/xxxx</code>\n"
         "• <code>pinterest.com/pin/xxxx</code>\n\n"
         "🎥 Videos\n"
         "🖼️ Images\n"
         "📂 Albums ZIP\n\n"
-        "⚠️ Daily limit: 4 downloads\n"
-        "👑 Owner: Unlimited"
+        "⚡ Fast & Stable"
     )
 
 
-# 🔄 PIN HANDLER
+# 🔄 MAIN PIN HANDLER
 @dp.message(F.text)
-async def handle_pinterest_main(m: Message):
+async def handle_pinterest(m: Message):
 
     uid = m.from_user.id
 
+    # Flood Protection
     if is_flood(uid, RATE_LIMIT, RATE_TIME):
         return await m.reply("🛑 Slow down!")
 
+    # Daily Limit
     if uid not in OWNER_IDS and not check_daily(uid):
         return await m.reply("🚫 Daily limit reached (4/day)")
 
+    # Extract URL
     match = PIN_REGEX.search(m.text)
     if not match:
         return
 
     url = match.group(1)
-    status_msg = await m.reply("🔄 Fetching Pinterest media...")
+    status = await m.reply("🔄 Fetching Pinterest media...")
 
     try:
+        # Cache Check
         cached = get_cache(url)
 
         if cached:
@@ -195,25 +158,28 @@ async def handle_pinterest_main(m: Message):
             images, video, error = await fetch_pin(url)
 
             if error:
-                return await status_msg.edit_text(f"❌ Error: {error}")
+                return await status.edit_text(f"❌ Error: {error}")
 
             set_cache(url, (images, video, None), CACHE_TIME)
 
         if not images and not video:
-            return await status_msg.edit_text("❌ No media found")
+            return await status.edit_text("❌ No media found!")
 
-        # 🎥 VIDEO
+        # 🎥 VIDEO DOWNLOAD
         if video:
             video_path = await download_media(video, "video")
 
             if video_path:
-                await status_msg.delete()
-                await m.reply_video(FSInputFile(video_path),
-                                   caption="🎥 HD Pinterest Video\n\n" + CREDIT_TEXT)
+                await status.delete()
+                await m.reply_video(
+                    FSInputFile(video_path),
+                    caption="🎥 <b>HD Pinterest Video</b>\n\n" + CREDIT_TEXT
+                )
                 os.remove(video_path)
             else:
-                await status_msg.delete()
-                await m.reply_video(video, caption="🎥 HD Video\n\n" + CREDIT_TEXT)
+                await status.delete()
+                await m.reply_video(video, caption="🎥 Video Link\n\n" + CREDIT_TEXT)
+
             return
 
         # 🖼️ SINGLE IMAGE
@@ -222,33 +188,45 @@ async def handle_pinterest_main(m: Message):
             img_path = await download_media(images[0])
 
             if img_path:
-                await status_msg.delete()
-                await m.reply_photo(FSInputFile(img_path),
-                                    caption=CREDIT_TEXT)
+                await status.delete()
+                await m.reply_photo(
+                    FSInputFile(img_path),
+                    caption=CREDIT_TEXT
+                )
                 os.remove(img_path)
+
             else:
-                await status_msg.delete()
-                await m.reply_photo(images[0], caption=CREDIT_TEXT)
+                await status.delete()
+                await m.reply_photo(
+                    images[0],
+                    caption="⚠️ Direct URL Mode\n\n" + CREDIT_TEXT
+                )
 
             return
 
         # 📂 MULTI IMAGE ZIP
         if len(images) > 1:
-            await status_msg.edit_text("📂 Creating ZIP album...")
+
+            await status.edit_text("📂 Creating ZIP album...")
 
             zip_path = await make_zip(images, "pinterest_album")
 
             if zip_path:
-                await status_msg.delete()
-                await m.reply_document(FSInputFile(zip_path),
-                                       caption=f"📂 Album ({len(images)} images)\n\n{CREDIT_TEXT}")
+                await status.delete()
+                await m.reply_document(
+                    FSInputFile(zip_path),
+                    caption=f"📂 Album ({len(images)} images)\n\n{CREDIT_TEXT}"
+                )
                 os.remove(zip_path)
+
             else:
-                await status_msg.edit_text("❌ ZIP failed")
+                await status.edit_text("❌ ZIP creation failed!")
+
+            return
 
     except Exception as e:
         print("BOT ERROR:", e)
-        await status_msg.edit_text(f"❌ Failed: {e}")
+        await status.edit_text(f"❌ Failed: {e}")
 
 
 # 🎮 INLINE MODE
@@ -257,7 +235,7 @@ async def inline_handler(q: InlineQuery):
     result = InlineQueryResultArticle(
         id="pinterest_dl",
         title="📌 Pinterest Downloader",
-        description="Send Pinterest link to bot",
+        description="Send Pinterest link to download",
         input_message_content=InputTextMessageContent(
             message_text="📌 Send Pinterest link to bot"
         )
@@ -265,13 +243,13 @@ async def inline_handler(q: InlineQuery):
     await q.answer(results=[result], cache_time=60)
 
 
-# 🧹 CLEANUP
+# 🧹 STARTUP CLEANUP
 async def on_startup():
     cleanup_cache()
     print("🧹 Cache cleaned | Bot Ready!")
 
 
-# 🚀 MAIN
+# 🚀 MAIN RUN
 async def main():
     await on_startup()
     print("🚀 Bot Started...")
