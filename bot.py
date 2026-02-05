@@ -20,15 +20,11 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import (
     BOT_TOKEN,
-    CACHE_TIME,
-    RATE_LIMIT,
-    RATE_TIME,
-    OWNER_IDS
+    CACHE_TIME
 )
 
 from pinterest import fetch_pin
 from cache import get_cache, set_cache, cleanup_cache
-from flood import is_flood, check_daily
 
 
 # 🔥 BOT INIT
@@ -54,15 +50,13 @@ CREDIT_TEXT = (
 )
 
 
-# ✅ FINAL FIXED MEDIA DOWNLOADER
+# ✅ MEDIA DOWNLOADER
 async def download_media(url: str, media_type="image"):
 
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Referer": "https://www.pinterest.com/",
         "Accept": "*/*",
-
-        # ✅ Brotli Fix
         "Accept-Encoding": "gzip, deflate"
     }
 
@@ -77,14 +71,13 @@ async def download_media(url: str, media_type="image"):
 
                 content = await r.read()
 
-                # Block HTML pages
+                # HTML block
                 if b"<html" in content[:200].lower():
                     return None
 
                 if len(content) < 5000:
                     return None
 
-                # Extension Detect
                 ctype = r.headers.get("content-type", "")
 
                 if "video" in ctype or media_type == "video":
@@ -115,26 +108,15 @@ async def start_cmd(m: Message):
         "• <code>pinterest.com/pin/xxxx</code>\n\n"
         "🎥 Videos\n"
         "🖼️ Images\n"
-        "🖼️ Multi Images → Album Mode\n\n"
-        "⚡ Fast & Stable"
+        "🖼️ Multi Images → Album\n\n"
+        "⚡ Unlimited & Fast"
     )
 
 
-# 🔄 MAIN PIN HANDLER
+# 🔄 MAIN HANDLER (UNLIMITED)
 @dp.message(F.text)
 async def handle_pinterest(m: Message):
 
-    uid = m.from_user.id
-
-    # Flood Protection
-    if is_flood(uid, RATE_LIMIT, RATE_TIME):
-        return await m.reply("🛑 Slow down!")
-
-    # Daily Limit
-    if uid not in OWNER_IDS and not check_daily(uid):
-        return await m.reply("🚫 Daily limit reached (4/day)")
-
-    # Extract URL
     match = PIN_REGEX.search(m.text)
     if not match:
         return
@@ -143,7 +125,6 @@ async def handle_pinterest(m: Message):
     status = await m.reply("🔄 Fetching Pinterest media...")
 
     try:
-        # Cache Check
         cached = get_cache(url)
 
         if cached:
@@ -163,62 +144,47 @@ async def handle_pinterest(m: Message):
         if video:
             video_path = await download_media(video, "video")
 
+            await status.delete()
+
             if video_path:
-                await status.delete()
                 await m.reply_video(
                     FSInputFile(video_path),
                     caption="🎥 <b>HD Pinterest Video</b>\n\n" + CREDIT_TEXT
                 )
                 os.remove(video_path)
-
             else:
-                await status.delete()
                 await m.reply_video(video, caption="🎥 Video Link\n\n" + CREDIT_TEXT)
 
             return
 
         # 🖼️ SINGLE IMAGE
         if len(images) == 1:
-
             img_path = await download_media(images[0])
+            await status.delete()
 
             if img_path:
-                await status.delete()
-                await m.reply_photo(
-                    FSInputFile(img_path),
-                    caption=CREDIT_TEXT
-                )
+                await m.reply_photo(FSInputFile(img_path), caption=CREDIT_TEXT)
                 os.remove(img_path)
-
             else:
-                await status.delete()
                 await m.reply_photo(images[0], caption=CREDIT_TEXT)
 
             return
 
-        # 🖼️ MULTIPLE IMAGES → ALBUM MODE (NO ZIP)
+        # 🖼️ MULTIPLE IMAGES (ALBUM)
         if len(images) > 1:
-
             await status.edit_text("🖼️ Sending images as Album...")
 
-            media_group = []
-
-            # Telegram limit = 10 photos per album
-            for img_url in images[:10]:
-                media_group.append(InputMediaPhoto(media=img_url))
+            media_group = [
+                InputMediaPhoto(media=img)
+                for img in images[:10]
+            ]
 
             await status.delete()
-
-            # Send Album
             await m.reply_media_group(media_group)
-
-            # Credit Message
             await m.reply(CREDIT_TEXT)
 
             if len(images) > 10:
                 await m.reply("⚠️ Only first 10 images sent (Telegram limit)")
-
-            return
 
     except Exception as e:
         await status.edit_text(f"❌ Failed: {e}")
@@ -232,24 +198,4 @@ async def inline_handler(q: InlineQuery):
         title="📌 Pinterest Downloader",
         description="Send Pinterest link to download",
         input_message_content=InputTextMessageContent(
-            message_text="📌 Send Pinterest link to bot"
-        )
-    )
-    await q.answer(results=[result], cache_time=60)
-
-
-# 🧹 STARTUP CLEANUP
-async def on_startup():
-    cleanup_cache()
-    print("🧹 Cache cleaned | Bot Ready!")
-
-
-# 🚀 MAIN RUN
-async def main():
-    await on_startup()
-    print("🚀 Bot Started...")
-    await dp.start_polling(bot)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+            message_text="📌 Send Pinterest_
