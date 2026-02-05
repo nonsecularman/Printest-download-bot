@@ -18,30 +18,27 @@ from aiogram.filters import CommandStart
 from aiogram.client.default import DefaultBotProperties
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from config import (
-    BOT_TOKEN,
-    CACHE_TIME
-)
-
+from config import BOT_TOKEN, CACHE_TIME
 from pinterest import fetch_pin
 from cache import get_cache, set_cache, cleanup_cache
 
 
-# 🔥 BOT INIT
+# ================== BOT INIT ==================
 bot = Bot(
-    BOT_TOKEN,
+    token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode="HTML")
 )
 
 dp = Dispatcher(storage=MemoryStorage())
 
 
-# Pinterest URL Regex
+# ================== REGEX ==================
 PIN_REGEX = re.compile(
     r"(https?://(?:www\.)?(?:pinterest\.com/pin/\S+|pin\.it/\S+))"
 )
 
-# Credit Text
+
+# ================== CREDIT ==================
 CREDIT_TEXT = (
     "━━━━━━━━━━━━━━\n"
     "📌 <b>Pinterest Downloader</b>\n"
@@ -50,9 +47,8 @@ CREDIT_TEXT = (
 )
 
 
-# ✅ MEDIA DOWNLOADER
-async def download_media(url: str, media_type="image"):
-
+# ================== MEDIA DOWNLOADER ==================
+async def download_media(url: str, media_type: str = "image"):
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Referer": "https://www.pinterest.com/",
@@ -71,7 +67,6 @@ async def download_media(url: str, media_type="image"):
 
                 content = await r.read()
 
-                # HTML block
                 if b"<html" in content[:200].lower():
                     return None
 
@@ -94,11 +89,11 @@ async def download_media(url: str, media_type="image"):
 
                 return str(path)
 
-    except:
+    except Exception:
         return None
 
 
-# 🚀 START COMMAND
+# ================== START ==================
 @dp.message(CommandStart())
 async def start_cmd(m: Message):
     await m.answer(
@@ -113,7 +108,7 @@ async def start_cmd(m: Message):
     )
 
 
-# 🔄 MAIN HANDLER (UNLIMITED)
+# ================== MAIN HANDLER ==================
 @dp.message(F.text)
 async def handle_pinterest(m: Message):
 
@@ -140,10 +135,9 @@ async def handle_pinterest(m: Message):
         if not images and not video:
             return await status.edit_text("❌ No media found!")
 
-        # 🎥 VIDEO
+        # ---------- VIDEO ----------
         if video:
             video_path = await download_media(video, "video")
-
             await status.delete()
 
             if video_path:
@@ -157,7 +151,7 @@ async def handle_pinterest(m: Message):
 
             return
 
-        # 🖼️ SINGLE IMAGE
+        # ---------- SINGLE IMAGE ----------
         if len(images) == 1:
             img_path = await download_media(images[0])
             await status.delete()
@@ -170,7 +164,7 @@ async def handle_pinterest(m: Message):
 
             return
 
-        # 🖼️ MULTIPLE IMAGES (ALBUM)
+        # ---------- MULTIPLE IMAGES ----------
         if len(images) > 1:
             await status.edit_text("🖼️ Sending images as Album...")
 
@@ -190,7 +184,7 @@ async def handle_pinterest(m: Message):
         await status.edit_text(f"❌ Failed: {e}")
 
 
-# 🎮 INLINE MODE
+# ================== INLINE MODE (FIXED) ==================
 @dp.inline_query()
 async def inline_handler(q: InlineQuery):
     result = InlineQueryResultArticle(
@@ -198,4 +192,24 @@ async def inline_handler(q: InlineQuery):
         title="📌 Pinterest Downloader",
         description="Send Pinterest link to download",
         input_message_content=InputTextMessageContent(
-            message_text="📌 Send Pinterest_
+            message_text="📌 Send Pinterest link to the bot"
+        )
+    )
+    await q.answer(results=[result], cache_time=60)
+
+
+# ================== STARTUP ==================
+async def on_startup():
+    cleanup_cache()
+    print("🧹 Cache cleaned | Bot Ready!")
+
+
+# ================== RUN ==================
+async def main():
+    await on_startup()
+    print("🚀 Bot Started...")
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
