@@ -12,7 +12,9 @@ from aiogram.types import (
     InlineQueryResultArticle,
     InputTextMessageContent,
     FSInputFile,
-    InputMediaPhoto
+    InputMediaPhoto,
+    InlineKeyboardMarkup,
+    InlineKeyboardButton
 )
 from aiogram.filters import CommandStart
 from aiogram.client.default import DefaultBotProperties
@@ -52,8 +54,7 @@ async def download_media(url: str, media_type: str = "image"):
     headers = {
         "User-Agent": "Mozilla/5.0",
         "Referer": "https://www.pinterest.com/",
-        "Accept": "*/*",
-        "Accept-Encoding": "gzip, deflate"
+        "Accept": "*/*"
     }
 
     try:
@@ -70,7 +71,7 @@ async def download_media(url: str, media_type: str = "image"):
                 if b"<html" in content[:200].lower():
                     return None
 
-                if len(content) < 5000:
+                if len(content) < 4000:
                     return None
 
                 ctype = r.headers.get("content-type", "")
@@ -93,18 +94,44 @@ async def download_media(url: str, media_type: str = "image"):
         return None
 
 
-# ================== START ==================
+# ================== PREMIUM START ==================
 @dp.message(CommandStart())
 async def start_cmd(m: Message):
+
+    bot_info = await bot.me()
+
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📢 Updates Channel",
+                    url="https://t.me/iscamz"
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="➕ Add To Group",
+                    url=f"https://t.me/{bot_info.username}?startgroup=true"
+                )
+            ]
+        ]
+    )
+
     await m.answer(
-        "🎉 <b>Pinterest Downloader Ready!</b>\n\n"
-        "📌 Send any Pinterest link:\n"
-        "• <code>pin.it/xxxx</code>\n"
-        "• <code>pinterest.com/pin/xxxx</code>\n\n"
-        "🎥 Videos\n"
-        "🖼️ Images\n"
-        "🖼️ Multi Images → Album\n\n"
-        "⚡ Unlimited & Fast"
+        "╭━━━━━━━━━━━━━━━━━━╮\n"
+        "✨ <b>Pinterest Downloader Bot</b> ✨\n"
+        "╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        "📌 <b>Send Any Pinterest Link</b>\n\n"
+        "🔹 <code>pin.it/xxxx</code>\n"
+        "🔹 <code>pinterest.com/pin/xxxx</code>\n\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        "🎥 <b>Download Videos</b>\n"
+        "🖼️ <b>Single Images</b>\n"
+        "📂 <b>Multi Images → Album</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n\n"
+        "⚡ <b>Fast • Stable • Unlimited</b>\n\n"
+        "💡 Just paste link and enjoy!",
+        reply_markup=keyboard
     )
 
 
@@ -128,17 +155,23 @@ async def handle_pinterest(m: Message):
             images, video, error = await fetch_pin(url)
 
             if error:
-                return await status.edit_text(f"❌ Error: {error}")
+                await status.edit_text(f"❌ Error: {error}")
+                return
 
             set_cache(url, (images, video, None), CACHE_TIME)
 
         if not images and not video:
-            return await status.edit_text("❌ No media found!")
+            await status.edit_text("❌ No media found!")
+            return
 
-        # ---------- VIDEO ----------
+        # ========= VIDEO =========
         if video:
             video_path = await download_media(video, "video")
-            await status.delete()
+
+            try:
+                await status.delete()
+            except:
+                pass
 
             if video_path:
                 await m.reply_video(
@@ -151,10 +184,14 @@ async def handle_pinterest(m: Message):
 
             return
 
-        # ---------- SINGLE IMAGE ----------
+        # ========= SINGLE IMAGE =========
         if len(images) == 1:
             img_path = await download_media(images[0])
-            await status.delete()
+
+            try:
+                await status.delete()
+            except:
+                pass
 
             if img_path:
                 await m.reply_photo(FSInputFile(img_path), caption=CREDIT_TEXT)
@@ -164,27 +201,55 @@ async def handle_pinterest(m: Message):
 
             return
 
-        # ---------- MULTIPLE IMAGES ----------
+        # ========= MULTIPLE IMAGES =========
         if len(images) > 1:
-            await status.edit_text("🖼️ Sending images as Album...")
+            await status.edit_text("🖼️ Downloading images...")
 
-            media_group = [
-                InputMediaPhoto(media=img)
-                for img in images[:10]
-            ]
+            media_group = []
+            downloaded_files = []
 
-            await status.delete()
+            for img in images[:10]:
+                img_path = await download_media(img)
+
+                if img_path:
+                    media_group.append(
+                        InputMediaPhoto(media=FSInputFile(img_path))
+                    )
+                    downloaded_files.append(img_path)
+
+                await asyncio.sleep(0.3)
+
+            if not media_group:
+                await status.edit_text("❌ Failed to download images!")
+                return
+
+            try:
+                await status.delete()
+            except:
+                pass
+
             await m.reply_media_group(media_group)
             await m.reply(CREDIT_TEXT)
+
+            for file in downloaded_files:
+                try:
+                    os.remove(file)
+                except:
+                    pass
 
             if len(images) > 10:
                 await m.reply("⚠️ Only first 10 images sent (Telegram limit)")
 
+            return
+
     except Exception as e:
-        await status.edit_text(f"❌ Failed: {e}")
+        try:
+            await status.edit_text(f"❌ Failed: {e}")
+        except:
+            await m.reply(f"❌ Error: {e}")
 
 
-# ================== INLINE MODE (FIXED) ==================
+# ================== INLINE MODE ==================
 @dp.inline_query()
 async def inline_handler(q: InlineQuery):
     result = InlineQueryResultArticle(
