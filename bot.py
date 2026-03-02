@@ -3,16 +3,14 @@ import asyncio
 import os
 import uuid
 from pathlib import Path
+import yt_dlp
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
     Message,
-    InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
-    FSInputFile,
     InlineKeyboardMarkup,
-    InlineKeyboardButton
+    InlineKeyboardButton,
+    FSInputFile
 )
 from aiogram.filters import CommandStart
 from aiogram.client.default import DefaultBotProperties
@@ -20,7 +18,6 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 
-# ================= BOT INIT =================
 bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode="HTML")
@@ -28,8 +25,6 @@ bot = Bot(
 
 dp = Dispatcher(storage=MemoryStorage())
 
-
-# ================= REGEX =================
 PIN_REGEX = re.compile(
     r"(https?://(?:www\.)?(?:pinterest\.com/pin/\S+|pin\.it/\S+))"
 )
@@ -42,7 +37,7 @@ CREDIT_TEXT = (
 )
 
 
-# ================= PREMIUM START =================
+# ================= START =================
 @dp.message(CommandStart())
 async def start_cmd(m: Message):
 
@@ -66,19 +61,16 @@ async def start_cmd(m: Message):
     )
 
     await m.answer(
-        "╭━━━━━━━━━━━━━━━━━━╮\n"
-        "✨ <b>Pinterest Downloader Bot</b> ✨\n"
-        "╰━━━━━━━━━━━━━━━━━━╯\n\n"
+        "✨ <b>Pinterest Downloader Bot</b> ✨\n\n"
         "📌 Send Pinterest Link\n\n"
         "🎥 Videos\n"
-        "🖼️ Images\n"
-        "📂 Albums\n\n"
+        "🖼 Images\n"
         "⚡ Fast • Stable • Unlimited",
         reply_markup=keyboard
     )
 
 
-# ================= MAIN HANDLER =================
+# ================= MAIN =================
 @dp.message(F.text)
 async def handle_pinterest(m: Message):
 
@@ -87,79 +79,51 @@ async def handle_pinterest(m: Message):
         return
 
     url = match.group(1)
-    status = await m.reply("🔄 Downloading from Pinterest...")
+    status = await m.reply("🔄 Downloading...")
 
     file_id = uuid.uuid4().hex
-    output_template = f"/tmp/{file_id}.%(ext)s"
+    output_path = f"/tmp/{file_id}.mp4"
 
     try:
-        # yt-dlp async run
-        process = await asyncio.create_subprocess_exec(
-            "yt-dlp",
-            "-f", "best",
-            "-o", output_template,
-            url,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
+        ydl_opts = {
+            "outtmpl": output_path,
+            "format": "best",
+            "quiet": True,
+        }
 
-        await process.communicate()
+        loop = asyncio.get_event_loop()
 
-        # find downloaded file
-        downloaded_file = None
-        for file in os.listdir("/tmp"):
-            if file.startswith(file_id):
-                downloaded_file = f"/tmp/{file}"
-                break
+        def download():
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
 
-        try:
-            await status.delete()
-        except:
-            pass
+        await loop.run_in_executor(None, download)
 
-        if not downloaded_file:
+        await status.delete()
+
+        if not os.path.exists(output_path):
             await m.reply("❌ Download failed.")
             return
 
-        file_size = os.path.getsize(downloaded_file)
+        file_size = os.path.getsize(output_path)
 
         if file_size > 50 * 1024 * 1024:
-            await m.reply("⚠️ File larger than 50MB. Cannot upload.")
-            os.remove(downloaded_file)
+            await m.reply("⚠️ File larger than 50MB.")
+            os.remove(output_path)
             return
 
-        if downloaded_file.endswith(".mp4"):
-            await m.reply_video(
-                FSInputFile(downloaded_file),
-                caption="🎥 <b>HD Pinterest Video</b>\n\n" + CREDIT_TEXT
-            )
-        else:
-            await m.reply_photo(
-                FSInputFile(downloaded_file),
-                caption=CREDIT_TEXT
-            )
+        await m.reply_video(
+            FSInputFile(output_path),
+            caption="🎥 <b>HD Pinterest Download</b>\n\n" + CREDIT_TEXT
+        )
 
-        os.remove(downloaded_file)
+        os.remove(output_path)
 
     except Exception as e:
         try:
             await status.edit_text(f"❌ Failed: {e}")
         except:
             await m.reply(f"❌ Error: {e}")
-
-
-# ================= INLINE =================
-@dp.inline_query()
-async def inline_handler(q: InlineQuery):
-    result = InlineQueryResultArticle(
-        id="pinterest_dl",
-        title="📌 Pinterest Downloader",
-        description="Send Pinterest link",
-        input_message_content=InputTextMessageContent(
-            message_text="📌 Send Pinterest link to bot"
-        )
-    )
-    await q.answer(results=[result], cache_time=60)
 
 
 # ================= RUN =================
