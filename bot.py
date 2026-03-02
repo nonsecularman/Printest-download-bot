@@ -25,7 +25,7 @@ from pinterest import fetch_pin
 from cache import get_cache, set_cache, cleanup_cache
 
 
-# ================== BOT INIT ==================
+# ================= BOT INIT =================
 bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode="HTML")
@@ -34,13 +34,13 @@ bot = Bot(
 dp = Dispatcher(storage=MemoryStorage())
 
 
-# ================== REGEX ==================
+# ================= REGEX =================
 PIN_REGEX = re.compile(
     r"(https?://(?:www\.)?(?:pinterest\.com/pin/\S+|pin\.it/\S+))"
 )
 
 
-# ================== CREDIT ==================
+# ================= CREDIT =================
 CREDIT_TEXT = (
     "━━━━━━━━━━━━━━\n"
     "📌 <b>Pinterest Downloader</b>\n"
@@ -49,16 +49,16 @@ CREDIT_TEXT = (
 )
 
 
-# ================== MEDIA DOWNLOADER ==================
+# ================= SAFE MEDIA DOWNLOADER =================
 async def download_media(url: str, media_type: str = "image"):
+
     headers = {
         "User-Agent": "Mozilla/5.0",
-        "Referer": "https://www.pinterest.com/",
-        "Accept": "*/*"
+        "Referer": "https://www.pinterest.com/"
     }
 
     try:
-        timeout = aiohttp.ClientTimeout(total=60)
+        timeout = aiohttp.ClientTimeout(total=120)
 
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as session:
             async with session.get(url, allow_redirects=True) as r:
@@ -66,27 +66,22 @@ async def download_media(url: str, media_type: str = "image"):
                 if r.status != 200:
                     return None
 
-                content = await r.read()
+                content_type = r.headers.get("content-type", "")
 
-                if b"<html" in content[:200].lower():
+                if media_type == "video" and "video" not in content_type:
                     return None
 
-                if len(content) < 4000:
-                    return None
+                file_size = int(r.headers.get("content-length", 0))
 
-                ctype = r.headers.get("content-type", "")
+                if file_size > 50 * 1024 * 1024:
+                    return "TOO_LARGE"
 
-                if "video" in ctype or media_type == "video":
-                    ext = "mp4"
-                elif "png" in ctype:
-                    ext = "png"
-                elif "webp" in ctype:
-                    ext = "webp"
-                else:
-                    ext = "jpg"
-
+                ext = "mp4" if media_type == "video" else "jpg"
                 path = Path(f"/tmp/{uuid.uuid4().hex}.{ext}")
-                path.write_bytes(content)
+
+                with open(path, "wb") as f:
+                    async for chunk in r.content.iter_chunked(1024 * 1024):
+                        f.write(chunk)
 
                 return str(path)
 
@@ -94,7 +89,7 @@ async def download_media(url: str, media_type: str = "image"):
         return None
 
 
-# ================== PREMIUM START ==================
+# ================= PREMIUM START =================
 @dp.message(CommandStart())
 async def start_cmd(m: Message):
 
@@ -121,21 +116,16 @@ async def start_cmd(m: Message):
         "╭━━━━━━━━━━━━━━━━━━╮\n"
         "✨ <b>Pinterest Downloader Bot</b> ✨\n"
         "╰━━━━━━━━━━━━━━━━━━╯\n\n"
-        "📌 <b>Send Any Pinterest Link</b>\n\n"
-        "🔹 <code>pin.it/xxxx</code>\n"
-        "🔹 <code>pinterest.com/pin/xxxx</code>\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🎥 <b>Download Videos</b>\n"
-        "🖼️ <b>Single Images</b>\n"
-        "📂 <b>Multi Images → Album</b>\n"
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        "⚡ <b>Fast • Stable • Unlimited</b>\n\n"
-        "💡 Just paste link and enjoy!",
+        "📌 <b>Send Pinterest Link</b>\n\n"
+        "🎥 Videos\n"
+        "🖼️ Images\n"
+        "📂 Multi Images → Album\n\n"
+        "⚡ Fast • Stable • Unlimited",
         reply_markup=keyboard
     )
 
 
-# ================== MAIN HANDLER ==================
+# ================= MAIN HANDLER =================
 @dp.message(F.text)
 async def handle_pinterest(m: Message):
 
@@ -164,14 +154,22 @@ async def handle_pinterest(m: Message):
             await status.edit_text("❌ No media found!")
             return
 
-        # ========= VIDEO =========
+        # ================= VIDEO =================
         if video:
+            await status.edit_text("🎥 Downloading video...")
+
             video_path = await download_media(video, "video")
 
             try:
                 await status.delete()
             except:
                 pass
+
+            if video_path == "TOO_LARGE":
+                await m.reply(
+                    "⚠️ Video larger than 50MB.\n\nDirect link:\n" + video
+                )
+                return
 
             if video_path:
                 await m.reply_video(
@@ -180,11 +178,11 @@ async def handle_pinterest(m: Message):
                 )
                 os.remove(video_path)
             else:
-                await m.reply_video(video, caption="🎥 Video Link\n\n" + CREDIT_TEXT)
+                await m.reply("⚠️ Video download failed.\n\n" + video)
 
             return
 
-        # ========= SINGLE IMAGE =========
+        # ================= SINGLE IMAGE =================
         if len(images) == 1:
             img_path = await download_media(images[0])
 
@@ -201,23 +199,25 @@ async def handle_pinterest(m: Message):
 
             return
 
-        # ========= MULTIPLE IMAGES =========
+        # ================= MULTIPLE IMAGES =================
         if len(images) > 1:
             await status.edit_text("🖼️ Downloading images...")
 
             media_group = []
-            downloaded_files = []
+            files = []
 
             for img in images[:10]:
                 img_path = await download_media(img)
 
                 if img_path:
                     media_group.append(
-                        InputMediaPhoto(media=FSInputFile(img_path))
+                        InputMediaPhoto(
+                            media=FSInputFile(img_path)
+                        )
                     )
-                    downloaded_files.append(img_path)
+                    files.append(img_path)
 
-                await asyncio.sleep(0.3)
+                await asyncio.sleep(0.2)
 
             if not media_group:
                 await status.edit_text("❌ Failed to download images!")
@@ -231,14 +231,11 @@ async def handle_pinterest(m: Message):
             await m.reply_media_group(media_group)
             await m.reply(CREDIT_TEXT)
 
-            for file in downloaded_files:
+            for f in files:
                 try:
-                    os.remove(file)
+                    os.remove(f)
                 except:
                     pass
-
-            if len(images) > 10:
-                await m.reply("⚠️ Only first 10 images sent (Telegram limit)")
 
             return
 
@@ -249,27 +246,27 @@ async def handle_pinterest(m: Message):
             await m.reply(f"❌ Error: {e}")
 
 
-# ================== INLINE MODE ==================
+# ================= INLINE =================
 @dp.inline_query()
 async def inline_handler(q: InlineQuery):
     result = InlineQueryResultArticle(
         id="pinterest_dl",
         title="📌 Pinterest Downloader",
-        description="Send Pinterest link to download",
+        description="Send Pinterest link",
         input_message_content=InputTextMessageContent(
-            message_text="📌 Send Pinterest link to the bot"
+            message_text="📌 Send Pinterest link to bot"
         )
     )
     await q.answer(results=[result], cache_time=60)
 
 
-# ================== STARTUP ==================
+# ================= STARTUP =================
 async def on_startup():
     cleanup_cache()
     print("🧹 Cache cleaned | Bot Ready!")
 
 
-# ================== RUN ==================
+# ================= RUN =================
 async def main():
     await on_startup()
     print("🚀 Bot Started...")
