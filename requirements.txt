@@ -24,3 +24,5 @@ asyncio-mqtt==0.16.1
 
 # Cache & Rate Limiting (Optional)
 redis==5.0.1
+
+yt-dlp
