@@ -85,8 +85,13 @@ async def download_with_ytdlp(url: str, output_path: str):
         "noplaylist": True,
         "geo_bypass": True,
         "quiet": True,
-        "nocheckcertificate": True,
         "retries": 3,
+
+        # 🔥 SSL FIX
+        "nocheckcertificate": True,
+        "ignoreerrors": True,
+        "no_warnings": True,
+        "source_address": "0.0.0.0",
     }
 
     loop = asyncio.get_event_loop()
