@@ -1,21 +1,15 @@
-BOT_TOKEN = "8372754673:AAEubxtMOd3OCAOygsrRlZbZQIeo70_PrjM"
+import os
 
-# 👑 OWNERS (UNLIMITED)
-OWNER_IDS = [
-    7519668949
-    # yahan aur IDs add kar sakte ho
-]
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
-# ⏳ Cache
-CACHE_TIME = 3600
+OWNER_IDS = list(map(int, os.environ.get("OWNER_IDS", "").split()))
 
-# 🚦 Flood / Rate limit
-RATE_LIMIT = 3
-RATE_TIME = 10
+CACHE_TIME = int(os.environ.get("CACHE_TIME", 3600))
 
-# 🔒 Force Subscribe Channels
-FORCE_CHANNEL_1 = "@iscamz"
-FORCE_CHANNEL_2 = "@kryshupdate"
+RATE_LIMIT = int(os.environ.get("RATE_LIMIT", 3))
+RATE_TIME = int(os.environ.get("RATE_TIME", 10))
 
-# 📌 Daily limit (normal users)
-DAILY_LIMIT = 4
+FORCE_CHANNEL_1 = os.environ.get("FORCE_CHANNEL_1")
+FORCE_CHANNEL_2 = os.environ.get("FORCE_CHANNEL_2")
+
+DAILY_LIMIT = int(os.environ.get("DAILY_LIMIT", 4))
