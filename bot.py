@@ -18,6 +18,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 
 from config import BOT_TOKEN
 
+
+# ================= BOT INIT =================
 bot = Bot(
     token=BOT_TOKEN,
     default=DefaultBotProperties(parse_mode="HTML")
@@ -25,9 +27,12 @@ bot = Bot(
 
 dp = Dispatcher(storage=MemoryStorage())
 
+
+# ================= REGEX =================
 PIN_REGEX = re.compile(
     r"(https?://(?:www\.)?(?:pinterest\.com/pin/\S+|pin\.it/\S+))"
 )
+
 
 CREDIT_TEXT = (
     "━━━━━━━━━━━━━━\n"
@@ -62,7 +67,7 @@ async def start_cmd(m: Message):
 
     await m.answer(
         "✨ <b>Pinterest Downloader Bot</b> ✨\n\n"
-        "📌 Send Pinterest Link\n\n"
+        "📌 Send any Pinterest link\n\n"
         "🎥 Videos\n"
         "🖼 Images\n"
         "⚡ Fast • Stable • Unlimited",
@@ -70,7 +75,30 @@ async def start_cmd(m: Message):
     )
 
 
-# ================= MAIN =================
+# ================= DOWNLOAD FUNCTION =================
+async def download_with_ytdlp(url: str, output_path: str):
+
+    ydl_opts = {
+        "outtmpl": output_path,
+        "format": "bv*+ba/best",
+        "merge_output_format": "mp4",
+        "noplaylist": True,
+        "geo_bypass": True,
+        "quiet": True,
+        "nocheckcertificate": True,
+        "retries": 3,
+    }
+
+    loop = asyncio.get_event_loop()
+
+    def run():
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            ydl.download([url])
+
+    await loop.run_in_executor(None, run)
+
+
+# ================= MAIN HANDLER =================
 @dp.message(F.text)
 async def handle_pinterest(m: Message):
 
@@ -85,30 +113,18 @@ async def handle_pinterest(m: Message):
     output_path = f"/tmp/{file_id}.mp4"
 
     try:
-        ydl_opts = {
-            "outtmpl": output_path,
-            "format": "best",
-            "quiet": True,
-        }
-
-        loop = asyncio.get_event_loop()
-
-        def download():
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([url])
-
-        await loop.run_in_executor(None, download)
+        await download_with_ytdlp(url, output_path)
 
         await status.delete()
 
         if not os.path.exists(output_path):
-            await m.reply("❌ Download failed.")
+            await m.reply("❌ No downloadable media found.")
             return
 
         file_size = os.path.getsize(output_path)
 
         if file_size > 50 * 1024 * 1024:
-            await m.reply("⚠️ File larger than 50MB.")
+            await m.reply("⚠️ File larger than 50MB (Telegram limit).")
             os.remove(output_path)
             return
 
